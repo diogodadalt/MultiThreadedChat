@@ -25,18 +25,20 @@ void* startClientThread(void* scktInfo) {
 	int newsockfd = socketInfo->newsockfd;
 	char* buffer = socketInfo->buffer;
 
-	bzero(buffer, 256);
+	while(1) {
+		bzero(buffer, 256);
 
-	/* read from the socket */
-	n = read(newsockfd, buffer, 256);
-	if (n < 0)
-		printf("ERROR reading from socket");
-	printf("Here is the message: %s\n", buffer);
+		/* read from the socket */
+		n = read(newsockfd, buffer, 256);
+		if (n < 0)
+			printf("ERROR reading from socket");
+		printf("Here is the message: %s\n", buffer);
 
-	/* write in the socket */
-	n = write(newsockfd, "I got your message", 18);
-	if (n < 0)
-		printf("ERROR writing to socket");
+		/* write in the socket */
+		n = write(newsockfd, "I got your message", 18);
+		if (n < 0)
+			printf("ERROR writing to socket");
+	}
 
 	return 0;
 }
