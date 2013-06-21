@@ -8,6 +8,7 @@
 #include <pthread.h>
 
 #define PORT 4000
+#define MAX_CLIENTS 100
 
 typedef struct SocketInfo {
 	char* buffer;
@@ -15,9 +16,37 @@ typedef struct SocketInfo {
 } SocketInfo;
 
 typedef struct ClientInfo {
-	int id;
+	int sockfd;
 	char userName[20];
+	struct sockaddr_in address;
 } ClientInfo;
+
+typedef struct ClientList {
+	ClientInfo** clients;
+	int size;
+} ClientList;
+
+void printClient(ClientInfo* clientInfo) {
+	printf("User %s, port %d", clientInfo->userName, clientInfo->address.sin_addr);
+}
+
+void printClients(ClientList* clientList) {
+	int i;
+	for (i = 0; i < clientList->size; i++) {
+		printClient(clientList->clients[i]);
+	}
+}
+
+void addClient(ClientList* clientList, ClientInfo* clientInfo) {
+	int i;
+	for (i = 0; i < clientList->size; i++) {
+		if (clientList->clients[i] == 0) {
+			clientList->clients[i] = clientInfo;
+			clientList->size++;
+			break;
+		}
+	}
+}
 
 void* startClientThread(void* scktInfo) {
 	SocketInfo* socketInfo = (SocketInfo*)scktInfo;
@@ -48,6 +77,10 @@ int main(int argc, char** argv) {
 	socklen_t clilen;
 	char buffer[256];
 	struct sockaddr_in serv_addr, cli_addr;
+	ClientList* clientList = malloc(sizeof(ClientList));
+
+	clientList->clients = calloc(MAX_CLIENTS, sizeof(ClientInfo*));
+	clientList->size = 0;
 
 	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) 
 		printf("ERROR opening socket");
@@ -71,7 +104,12 @@ int main(int argc, char** argv) {
 		SocketInfo* si = (SocketInfo*)malloc(sizeof(SocketInfo));
 		si->buffer = buffer;
 		si->newsockfd = newsockfd;
-		printf("Usuario %s se conectou: \n", "userName");
+		ClientInfo* ci = (ClientInfo*)malloc(sizeof(ClientInfo));
+		ci->sockfd = sockfd;
+		ci->address = cli_addr;
+		sprintf(ci->userName, "anonymous_%d", cli_addr.sin_port);
+		addClient(clientList, ci);
+		printf("Usuario %s se conectou: \n", ci->userName);
 		pthread_create(&child, NULL, startClientThread, si);
 	}
 
