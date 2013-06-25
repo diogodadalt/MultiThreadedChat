@@ -12,7 +12,9 @@ LIBS += -lcdk
 LIBS += -lncurses
 
 SOURCES += client.c \
-    user_interface.c
+	../common/socket_wrapper.c \
+	user_interface.c
 
 HEADERS += \
-    user_interface.h
+	../common/socket_wrapper.h \
+	user_interface.h

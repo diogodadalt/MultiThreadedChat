@@ -13,5 +13,6 @@ typedef struct UIStructure {
 UIStructure* createUI(void);
 void destroyUI(UIStructure* uiStructure);
 void printOnChat(UIStructure* uiStructure, char* msg);
+char* getUserInput(UIStructure* uiStructure);
 
 #endif // USER_INTERFACE_H

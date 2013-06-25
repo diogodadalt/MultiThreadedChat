@@ -22,3 +22,14 @@ void destroyUI(UIStructure* uiStucture) {
 void printOnChat(UIStructure* uiStructure, char* msg) {
 	addCDKSwindow(uiStructure->swindow, msg, BOTTOM);
 }
+
+char* getUserInput(UIStructure* uiStructure) {
+	char* msg;
+	char* finalMessage;
+	msg = activateCDKMentry(uiStructure->mentry, NULL);
+	refreshCDKScreen(uiStructure->screen);
+	finalMessage = (char*)malloc(strlen(msg) + 1);
+	strcpy(finalMessage, msg);
+	strcat(finalMessage, "\0");
+	return finalMessage;
+}

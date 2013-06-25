@@ -6,4 +6,12 @@ CONFIG -= qt
 
 LIBS += -lpthread
 
-SOURCES += server.c
+SOURCES += server.c \
+	../common/socket_wrapper.c \
+	command.c \
+	client_info.c
+
+HEADERS += \
+	../common/socket_wrapper.h \
+	command.h \
+	client_info.h

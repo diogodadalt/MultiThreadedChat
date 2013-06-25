@@ -2,129 +2,90 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/types.h> 
+#include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include "../common/socket_wrapper.h"
+#include "command.h"
+#include "client_info.h"
 
 #define PORT 4000
 #define MAX_CLIENTS 100
-
-typedef struct ClientInfo {
-	int sockfd;
-	char userName[20];
-	struct sockaddr_in address;
-} ClientInfo;
-
-typedef struct ClientList {
-	ClientInfo** clients;
-	int size;
-} ClientList;
-
-typedef struct SocketInfo {
-	char* buffer;
-	int newsockfd;
-	ClientList* clientList;
-	ClientInfo* currentClient;
-} SocketInfo;
+#define BUFFER_SIZE 256
 
 void broadCastMessage(char* message, ClientList* clientList) {
-	int i, n;	
+	int i, n;
+	pthread_mutex_t clientListMutex = getClientsMutex();
+	pthread_mutex_lock(&clientListMutex);
 	for (i = 0; i < clientList->size; i++) {
 		n = write(clientList->clients[i]->sockfd, message, strlen(message));
 		if (n < 0)
 			printf("ERROR writing to socket");
 	}
+	pthread_mutex_unlock(&clientListMutex);
 }
 
-void printClient(ClientInfo* clientInfo) {
-	printf("User %s", clientInfo->userName);
-}
-
-void printClients(ClientList* clientList) {
-	int i;
-	for (i = 0; i < clientList->size; i++) {
-		printClient(clientList->clients[i]);
-	}
-}
-
-void addClient(ClientList* clientList, ClientInfo* clientInfo) {
-	if (clientList->size < MAX_CLIENTS) {
-		clientList->clients[clientList->size] = clientInfo;
-		clientList->size++;
-	}
-}
-
-void* startClientThread(void* scktInfo) {
-	SocketInfo* socketInfo = (SocketInfo*)scktInfo;
+void* startClientThread(void* args) {
+	ClientInfo* clientInfo = (ClientInfo*)args;
 	int n;
-	int newsockfd = socketInfo->newsockfd;
-	char* buffer = socketInfo->buffer;
-	ClientList* clientList = socketInfo->clientList;
+	int sockfd = clientInfo->sockfd;
+	char buffer[BUFFER_SIZE];
+	ClientList* clientList = clientInfo->clientList;
+	char* finalMessage = NULL;
 
 	while(1) {
-		bzero(buffer, 256);
+		bzero(buffer, BUFFER_SIZE);
 
 		/* read from the socket */
-		n = read(newsockfd, buffer, 256);
+		n = read(sockfd, buffer, 256);
 		if (n < 0)
 			printf("ERROR reading from socket");
 
-		int finalMessageLen = strlen(socketInfo->currentClient->userName) + strlen(buffer) + 4;
-		char* finalMessage = malloc(finalMessageLen);
-		strcpy(finalMessage, socketInfo->currentClient->userName);
-		strcat(finalMessage, " => ");
-		strcat(finalMessage, buffer);
-		printf("%s\n", finalMessage);
+		int isCommand = processCommandIfExist(buffer, clientInfo);
 
+		if (isCommand) {
+			finalMessage = malloc(42);
+			strcpy(finalMessage, "Usuario ");
+			strcat(finalMessage, clientInfo->userName);
+			strcat(finalMessage, " saiu do chat.");
+		} else
+			finalMessage = assembleMessage(clientInfo, buffer);
+
+		printf("%s\n", finalMessage);
 		broadCastMessage(finalMessage, clientList);
+		free(finalMessage);
+
+		if (isCommand) {
+			close(clientInfo->sockfd);
+			break;
+		}
 	}
 
 	return 0;
 }
 
-int main(int argc, char** argv) {
-	int sockfd, newsockfd;
-	socklen_t clilen;
-	char buffer[256];
-	struct sockaddr_in serv_addr, cli_addr;
-	ClientList* clientList = malloc(sizeof(ClientList));
+void* handleClientConnection(void* args) {
+	ConnectionInfo* connInfo = (ConnectionInfo*)args;
+	ClientList* clientList = (ClientList*)connInfo->additionalInfo;
+	pthread_t clientThread;
+	ClientInfo* ci = (ClientInfo*)malloc(sizeof(ClientInfo));
+	ci->sockfd = connInfo->sockfd;
+	ci->address = connInfo->address;
+	ci->clientList = clientList;
+	addClient(clientList, ci, MAX_CLIENTS);
+	sprintf(ci->userName, "anonymous_%d", ci->address.sin_port);
+	printf("Usuario %s se conectou: \n", ci->userName);
+	pthread_create(&clientThread, NULL, startClientThread, ci);
+	return 0;
+}
 
+int main(void) {
+	ClientList* clientList = malloc(sizeof(ClientList));
 	clientList->clients = calloc(MAX_CLIENTS, sizeof(ClientInfo*));
 	clientList->size = 0;
 
-	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) 
-		printf("ERROR opening socket");
+	connectServerBlocking(PORT, MAX_CLIENTS, handleClientConnection, clientList);
 
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_port = htons(PORT);
-	serv_addr.sin_addr.s_addr = INADDR_ANY;
-	bzero(&(serv_addr.sin_zero), 8);
-
-	if (bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
-		printf("ERROR on binding");
-
-	listen(sockfd, 5);
-
-	clilen = sizeof(struct sockaddr_in);
-
-	while((newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen))) {
-		pthread_t child;
-		SocketInfo* si = (SocketInfo*)malloc(sizeof(SocketInfo));
-		si->buffer = buffer;
-		si->newsockfd = newsockfd;		
-		ClientInfo* ci = (ClientInfo*)malloc(sizeof(ClientInfo));
-		ci->sockfd = newsockfd;
-		ci->address = cli_addr;
-		sprintf(ci->userName, "anonymous_%d", cli_addr.sin_port);
-		addClient(clientList, ci);
-		si->clientList = clientList;
-		si->currentClient = ci;
-		printf("Usuario %s se conectou: \n", ci->userName);
-		pthread_create(&child, NULL, startClientThread, si);
-	}
-
-	close(newsockfd);
-	close(sockfd);
 	return 0;
 }
